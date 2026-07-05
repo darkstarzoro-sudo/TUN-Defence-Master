@@ -57,6 +57,11 @@ const CATEGORIES = {
       { cmd: '/treaty remove',            desc: 'Remove a treaty record' },
       { cmd: '/treaty list',              desc: 'Show your full treaty network grouped by type' },
       { cmd: '/treaty check',             desc: 'Check what treaties exist with a specific alliance' },
+      { cmd: '/dnr add',                  desc: 'Add an alliance to the Do Not Raid list' },
+      { cmd: '/dnr remove',               desc: 'Remove an alliance from the DNR list' },
+      { cmd: '/dnr list',                 desc: 'Show the full DNR list with reasons' },
+      { cmd: '/dnr check',                desc: 'Check if a specific alliance is on the DNR list' },
+      { cmd: '/dnr settings',             desc: 'Configure the in-game and Discord DM messages sent to DNR violators' },
     ],
   },
   military1: {

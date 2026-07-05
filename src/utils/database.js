@@ -46,6 +46,8 @@ async function connectDatabase() {
   addPhase10Tables();
   addPhase12Tables();
   addNationLinksTable();
+  addSpyTables();
+  addDnrTable();
   logger.info(`Database ready at: ${DB_PATH}`);
 }
 
@@ -242,7 +244,7 @@ function createTables() {
   logger.info('All database tables ready');
 }
 
-module.exports = { connectDatabase, query, run, queryOne, saveDatabase, addPhase6Tables, addPhase7Tables, addPhase9Tables, addPhase10Tables, addPhase12Tables, addNationLinksTable };
+module.exports = { connectDatabase, query, run, queryOne, saveDatabase, addPhase6Tables, addPhase7Tables, addPhase9Tables, addPhase10Tables, addPhase12Tables, addNationLinksTable, addSpyTables, addDnrTable };
 
 // NOTE: This function is appended — new tables added in Phase 6
 // Call addPhase6Tables() from connectDatabase if needed,
@@ -379,6 +381,49 @@ function addNationLinksTable() {
         updated_at TEXT DEFAULT (datetime('now')),
         UNIQUE(guild_id, discord_user_id),
         UNIQUE(guild_id, nation_id)
+      );
+    `);
+  } catch (err) { /* already exists */ }
+}
+
+function addSpyTables() {
+  if (!db) return;
+  try {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS spy_snapshots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id TEXT NOT NULL,
+        nation_id INTEGER NOT NULL,
+        nation_name TEXT,
+        soldiers INTEGER DEFAULT 0,
+        tanks INTEGER DEFAULT 0,
+        aircraft INTEGER DEFAULT 0,
+        ships INTEGER DEFAULT 0,
+        missiles INTEGER DEFAULT 0,
+        nukes INTEGER DEFAULT 0,
+        spies INTEGER DEFAULT 0,
+        recorded_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_spy_snapshots_guild_nation
+        ON spy_snapshots(guild_id, nation_id);
+    `);
+  } catch (err) { /* already exists */ }
+}
+
+function addDnrTable() {
+  if (!db) return;
+  try {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS dnr_list (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id TEXT NOT NULL,
+        alliance_id INTEGER NOT NULL,
+        alliance_name TEXT NOT NULL,
+        reason TEXT,
+        added_by TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(guild_id, alliance_id)
       );
     `);
   } catch (err) { /* already exists */ }

@@ -6,7 +6,7 @@
 
 const { SlashCommandBuilder, EmbedBuilder, AttachmentBuilder } = require('discord.js');
 const { queryOne } = require('../../utils/database');
-const { pwQuery, resolveNation } = require('../../utils/pwApi');
+const { pwQuery, resolveNation, MEMBER_POSITIONS } = require('../../utils/pwApi');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -132,8 +132,16 @@ module.exports = {
       await interaction.editReply('⏳ Fetching war data from P&W...');
 
       const allWars = await fetchAllianceWars();
-      const offWars = allWars.filter(w => String(w.att_alliance_id) === allianceIdStr);
-      const defWars = allWars.filter(w => String(w.def_alliance_id) === allianceIdStr);
+      // Exclude applicants — only show real member wars
+      const offWars = allWars.filter(w =>
+        String(w.att_alliance_id) === allianceIdStr &&
+        MEMBER_POSITIONS.includes((w.attacker?.alliance_position || '').toUpperCase())
+      );
+      // Exclude applicants — only show real member wars
+      const defWars = allWars.filter(w =>
+        String(w.def_alliance_id) === allianceIdStr &&
+        MEMBER_POSITIONS.includes((w.defender?.alliance_position || '').toUpperCase())
+      );
 
       // Show first 5 of each in the embed
       function shortList(wars, isOff) {
@@ -164,7 +172,11 @@ module.exports = {
       await interaction.editReply('⏳ Fetching defensive war data...');
 
       const allWars = await fetchAllianceWars();
-      const defWars = allWars.filter(w => String(w.def_alliance_id) === allianceIdStr);
+      // Exclude applicants — only show real member wars
+      const defWars = allWars.filter(w =>
+        String(w.def_alliance_id) === allianceIdStr &&
+        MEMBER_POSITIONS.includes((w.defender?.alliance_position || '').toUpperCase())
+      );
 
       if (defWars.length === 0) {
         return interaction.editReply({
@@ -212,7 +224,11 @@ module.exports = {
       await interaction.editReply('⏳ Fetching offensive war data...');
 
       const allWars = await fetchAllianceWars();
-      const offWars = allWars.filter(w => String(w.att_alliance_id) === allianceIdStr);
+      // Exclude applicants — only show real member wars
+      const offWars = allWars.filter(w =>
+        String(w.att_alliance_id) === allianceIdStr &&
+        MEMBER_POSITIONS.includes((w.attacker?.alliance_position || '').toUpperCase())
+      );
 
       if (offWars.length === 0) {
         return interaction.editReply({

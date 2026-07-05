@@ -6,7 +6,7 @@
 
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { query, run, queryOne } = require('../../utils/database');
-const { pwQuery, getAllianceMembers } = require('../../utils/pwApi');
+const { pwQuery, getAllianceMembers, MEMBER_POSITIONS } = require('../../utils/pwApi');
 const { getLinkedDiscordUser, buildNationToDiscordMap } = require('../../utils/nationLink');
 const { calculateNationReadiness, getReadinessWeights } = require('../../utils/mmrCalculator');
 const logger = require('../../utils/logger');
@@ -63,7 +63,11 @@ async function processGuildDefense(client, guildId, allianceId) {
 
     const allWars      = data?.wars?.data || [];
     const allianceIdStr = String(allianceId);
-    const defWars      = allWars.filter(w => String(w.def_alliance_id) === allianceIdStr);
+    const defWars      = allWars.filter(w =>
+      String(w.def_alliance_id) === allianceIdStr &&
+      // Exclude applicants — only alert for real members
+      MEMBER_POSITIONS.includes((w.defender?.alliance_position || '').toUpperCase())
+    );
 
     if (defWars.length === 0) return;
 
