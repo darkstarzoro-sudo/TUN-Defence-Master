@@ -1,7 +1,8 @@
 // ============================================================
 // src/jobs/beigeJob.js
-// Runs every 5 minutes. Checks all guilds for beige exits
-// and sends alerts when intervals are reached.
+// Fixed: alerts now fire correctly even if bot starts after
+// a nation is already in beige. Old "sent" records are cleared
+// when a nation exits beige so alerts fire again next time.
 // ============================================================
 
 const { query } = require('../utils/database');
@@ -19,13 +20,13 @@ async function checkBeigeExits(client) {
   logger.debug('Running beige exit check...');
 
   try {
-    // Get all guilds that have the bot
-    const guilds = query('SELECT guild_id, alliance_id FROM guilds WHERE alliance_id IS NOT NULL').rows;
+    const guilds = query(
+      'SELECT guild_id, alliance_id FROM guilds WHERE alliance_id IS NOT NULL', []
+    ).rows;
 
     for (const guild of guilds) {
       await processGuildBeige(client, guild.guild_id);
     }
-
   } catch (error) {
     logger.error('Beige job error:', error);
   }
@@ -33,40 +34,47 @@ async function checkBeigeExits(client) {
 
 async function processGuildBeige(client, guildId) {
   try {
-    // Get all beige nations from watchlisted enemies
     const beigeNations = await getBeigeTargets(guildId);
 
     if (beigeNations.length === 0) {
-      // Clean up old alert records since no one is in beige
       cleanOldAlerts(guildId, []);
       return;
     }
 
-    // Keep track of which nations are still in beige for cleanup
     const activeNationIds = beigeNations.map(n => n.id);
     cleanOldAlerts(guildId, activeNationIds);
 
-    // Get configured alert intervals for this guild (e.g. [60, 30, 15, 5])
     const intervals = getAlertIntervals(guildId);
 
+    logger.debug(`Beige check for guild ${guildId}: ${beigeNations.length} nations in beige, intervals: ${intervals.join(',')}`);
+
     for (const nation of beigeNations) {
-      // Which alerts are due for this nation right now?
+      logger.debug(`  Nation ${nation.nation_name}: ${Math.round(nation.minutesRemaining)}min remaining`);
+
+      // Find the SMALLEST interval that applies right now
+      // e.g. if 8 minutes left and intervals=[60,30,15,5], applicable=[5]
+      // We only send the most urgent alert not yet sent
       const alertsDue = getAlertsDue(nation, intervals);
 
+      if (alertsDue.length === 0) {
+        logger.debug(`    No alerts due yet (${Math.round(nation.minutesRemaining)}min remaining)`);
+        continue;
+      }
+
       for (const interval of alertsDue) {
-        // Skip if we already sent this alert
-        if (wasAlertSent(guildId, nation.id, interval)) continue;
+        if (wasAlertSent(guildId, nation.id, interval)) {
+          logger.debug(`    Alert for ${interval}min already sent, skipping`);
+          continue;
+        }
 
-        // Send the alert
+        logger.debug(`    Sending ${interval}min alert for ${nation.nation_name}`);
         await sendBeigeAlert(client, guildId, nation, interval);
-
-        // Mark it as sent so we don't send again
         markAlertSent(guildId, nation.id, interval);
       }
     }
 
   } catch (error) {
-    logger.error(`Error processing beige for guild ${guildId}:`, error);
+    logger.error(`Error processing beige for guild ${guildId}: ${error.message}`);
   }
 }
 
