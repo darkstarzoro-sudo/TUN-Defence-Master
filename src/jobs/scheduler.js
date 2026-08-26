@@ -1,5 +1,6 @@
 // ============================================================
 // src/jobs/scheduler.js
+// Spy detection removed — too many false positives from war losses
 // ============================================================
 
 const cron = require('node-cron');
@@ -9,13 +10,12 @@ const { generateDailyReport } = require('./reportJob');
 const { checkMilitaryChanges } = require('../systems/intelligence/militaryMonitor');
 const { checkAllianceDefense } = require('../systems/defense/warMonitor');
 const { checkVacationChanges, checkWarExpiry } = require('../systems/intelligence/vacationTracker');
-const { checkForSpyAttacks } = require('../systems/intelligence/spyDetector');
 const { checkDnrViolations } = require('../systems/intelligence/dnrMonitor');
+const { runAutoBackup } = require('./backupJob');
 
 async function startAllJobs(client) {
   logger.info('Starting background job scheduler...');
 
-  // Startup checks after 10 seconds
   setTimeout(async () => {
     logger.info('Running startup checks...');
     await checkBeigeExits(client);
@@ -23,13 +23,12 @@ async function startAllJobs(client) {
     await checkDnrViolations(client);
   }, 10000);
 
-  // Defense check every 60 seconds — near-instant attack alerts
+  // Defense check every 60 seconds
   cron.schedule('* * * * *', async () => {
     await checkAllianceDefense(client);
   });
 
-  // DNR violation check every 3 minutes
-  // (frequent enough to catch violations quickly)
+  // DNR check every 3 minutes
   cron.schedule('*/3 * * * *', async () => {
     logger.debug('🚫 Checking DNR violations...');
     await checkDnrViolations(client);
@@ -41,11 +40,10 @@ async function startAllJobs(client) {
     await checkBeigeExits(client);
   });
 
-  // Military changes + spy detection every 15 minutes
+  // Military change alerts every 15 minutes
   cron.schedule('*/15 * * * *', async () => {
-    logger.debug('🔍 Checking military changes + spy attacks...');
+    logger.debug('🔍 Checking military changes...');
     await checkMilitaryChanges(client);
-    await checkForSpyAttacks(client);
   });
 
   // Vacation mode changes every 15 minutes
@@ -60,13 +58,19 @@ async function startAllJobs(client) {
     await checkWarExpiry(client);
   });
 
+  // Auto backup every 6 hours
+  cron.schedule('0 */6 * * *', async () => {
+    logger.info('💾 Running auto backup...');
+    await runAutoBackup(client);
+  });
+
   // Daily report at 08:00 UTC
   cron.schedule('0 8 * * *', async () => {
     logger.info('📅 Sending daily reports...');
     await generateDailyReport(client);
   });
 
-  logger.info('✅ Scheduler — defense 60s | DNR 3min | beige 5min | military/spy/vacation 15min | expiry 30min | daily 08:00 UTC');
+  logger.info('✅ Scheduler — defense 60s | DNR 3min | beige 5min | military/vacation 15min | expiry 30min | backup 6h | daily 08:00 UTC');
 }
 
 module.exports = { startAllJobs };

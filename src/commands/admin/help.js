@@ -21,6 +21,9 @@ const CATEGORIES = {
       { cmd: '/config role government', desc: 'Set which Discord role = Government' },
       { cmd: '/config view',            desc: 'View all current bot settings' },
       { cmd: '/alerts intervals',       desc: 'Set beige alert timing e.g. 60,30,15,5 minutes' },
+      { cmd: '/backup export',  desc: 'Export all bot config (DNR, treaties, watchlists, links, settings) to a JSON file' },
+{ cmd: '/backup import',  desc: 'Restore a previously exported backup — attach the JSON file' },
+{ cmd: '/backup status',  desc: 'Show a summary of all current configuration in the bot' },
     ],
   },
   beige: {
@@ -163,6 +166,7 @@ const CATEGORIES = {
       { cmd: '🏖️ Vacation alerts',    desc: 'Alerts when watched enemy nations enter or exit vacation mode' },
       { cmd: '⏰ War expiry alerts',   desc: 'Warns when your offensive wars are about to expire (12 and 6 turns)' },
       { cmd: '📅 Daily report',        desc: 'Automatic alliance status report sent to intel channel at 08:00 UTC' },
+      { cmd: '💾  Auto backup', desc: 'Sends a full config backup to your backup channel every 6 hours automatically' },
     ],
   },
 };

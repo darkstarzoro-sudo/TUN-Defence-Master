@@ -48,6 +48,7 @@ async function connectDatabase() {
   addNationLinksTable();
   addSpyTables();
   addDnrTable();
+  addWarRoomTables();
   logger.info(`Database ready at: ${DB_PATH}`);
 }
 
@@ -242,6 +243,30 @@ function createTables() {
   `);
 
   logger.info('All database tables ready');
+}
+
+function addWarRoomTables() {
+  if (!db) return;
+  try {
+    db.run(`
+      CREATE TABLE IF NOT EXISTS war_rooms (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guild_id TEXT NOT NULL, channel_id TEXT NOT NULL,
+        enemy_nation_id INTEGER NOT NULL, enemy_nation_name TEXT,
+        enemy_alliance_name TEXT, director_discord_id TEXT,
+        card_message_id TEXT, status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(guild_id, channel_id)
+      );
+      CREATE TABLE IF NOT EXISTS war_room_members (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        war_room_id INTEGER NOT NULL, discord_user_id TEXT,
+        nation_id INTEGER, nation_name TEXT, war_id INTEGER,
+        joined_at TEXT DEFAULT (datetime('now')),
+        UNIQUE(war_room_id, nation_id)
+      );
+    `);
+  } catch (err) {}
 }
 
 module.exports = { connectDatabase, query, run, queryOne, saveDatabase, addPhase6Tables, addPhase7Tables, addPhase9Tables, addPhase10Tables, addPhase12Tables, addNationLinksTable, addSpyTables, addDnrTable };
