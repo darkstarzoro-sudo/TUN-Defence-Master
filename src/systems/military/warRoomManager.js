@@ -11,6 +11,7 @@ const {
   ActionRowBuilder, ButtonBuilder, ButtonStyle,
 } = require('discord.js');
 const { query, run, queryOne } = require('../../utils/database');
+const { getGif } = require('../../utils/attackGifs');
 const { pwQuery } = require('../../utils/pwApi');
 const logger = require('../../utils/logger');
 
@@ -137,61 +138,78 @@ async function fetchNewAttacks(warId, lastAttackId) {
 // ============================================================
 function buildAttackEmbed(attack) {
   const typeEmojis = {
-    GROUND:          '⚔️',
-    AIRSTRIKE_INFRA: '✈️',
+    GROUND:             '⚔️',
+    AIRSTRIKE_INFRA:    '✈️',
     AIRSTRIKE_SOLDIERS: '✈️',
-    AIRSTRIKE_TANKS: '✈️',
-    AIRSTRIKE_MONEY: '✈️',
-    AIRSTRIKE_SHIP:  '✈️',
-    AIRSTRIKE_AIR:   '✈️',
-    NAVAL:           '🚢',
-    MISSILE:         '🚀',
-    NUKE:            '☢️',
-    FORTIFY:         '🏰',
-    PEACE:           '🕊️',
+    AIRSTRIKE_TANKS:    '✈️',
+    AIRSTRIKE_MONEY:    '✈️',
+    AIRSTRIKE_SHIP:     '✈️',
+    AIRSTRIKE_AIR:      '✈️',
+    NAVAL:              '🚢',
+    NAVAL_INFRA:        '🚢',
+    MISSILE:            '🚀',
+    NUKE:               '☢️',
+    FORTIFY:            '🏰',
+    PEACE:              '🕊️',
   };
 
   const successLabels = {
-    IMMENSE_TRIUMPH:    '🏆 IMMENSE TRIUMPH',
-    MODERATE_SUCCESS:   '✅ MODERATE SUCCESS',
-    PYRRHIC_VICTORY:    '⚠️ PYRRHIC VICTORY',
-    UTTER_FAILURE:      '❌ UTTER FAILURE',
-    VICTORY:            '✅ VICTORY',
+    IMMENSE_TRIUMPH:  '🏆 IMMENSE TRIUMPH',
+    MODERATE_SUCCESS: '✅ MODERATE SUCCESS',
+    PYRRHIC_VICTORY:  '⚠️ PYRRHIC VICTORY',
+    UTTER_FAILURE:    '❌ UTTER FAILURE',
+    VICTORY:          '✅ VICTORY',
   };
 
-  const attackType  = attack.type || 'UNKNOWN';
-  const emoji       = typeEmojis[attackType] || '⚔️';
-  const success     = successLabels[attack.success] || attack.success || '?';
-  const victor      = attack.victor === attack.attid ? attack.att_nation_name : attack.def_nation_name;
+  const attackType = attack.type || 'UNKNOWN';
+  const emoji      = typeEmojis[attackType] || '⚔️';
+  const success    = successLabels[attack.success] || attack.success || '?';
+  const isAttWin   = String(attack.victor) === String(attack.attid);
+  const color      = isAttWin ? 0x2ecc71 : 0xe74c3c;
 
-  // Build losses text
+  // Losses
   const attLosses = [];
   const defLosses = [];
-  if (attack.att_soldiers_lost > 0) attLosses.push(`👮 ${attack.att_soldiers_lost.toLocaleString()}`);
-  if (attack.att_tanks_lost    > 0) attLosses.push(`🚗 ${attack.att_tanks_lost.toLocaleString()}`);
-  if (attack.att_aircraft_lost > 0) attLosses.push(`✈️ ${attack.att_aircraft_lost.toLocaleString()}`);
-  if (attack.att_ships_lost    > 0) attLosses.push(`🚢 ${attack.att_ships_lost.toLocaleString()}`);
-  if (attack.def_soldiers_lost > 0) defLosses.push(`👮 ${attack.def_soldiers_lost.toLocaleString()}`);
-  if (attack.def_tanks_lost    > 0) defLosses.push(`🚗 ${attack.def_tanks_lost.toLocaleString()}`);
-  if (attack.def_aircraft_lost > 0) defLosses.push(`✈️ ${attack.def_aircraft_lost.toLocaleString()}`);
-  if (attack.def_ships_lost    > 0) defLosses.push(`🚢 ${attack.def_ships_lost.toLocaleString()}`);
+  if ((attack.att_soldiers_lost||0) > 0) attLosses.push(`👮 ${Number(attack.att_soldiers_lost).toLocaleString()}`);
+  if ((attack.att_tanks_lost   ||0) > 0) attLosses.push(`🚗 ${Number(attack.att_tanks_lost).toLocaleString()}`);
+  if ((attack.att_aircraft_lost||0) > 0) attLosses.push(`✈️ ${Number(attack.att_aircraft_lost).toLocaleString()}`);
+  if ((attack.att_ships_lost   ||0) > 0) attLosses.push(`🚢 ${Number(attack.att_ships_lost).toLocaleString()}`);
+  if ((attack.def_soldiers_lost||0) > 0) defLosses.push(`👮 ${Number(attack.def_soldiers_lost).toLocaleString()}`);
+  if ((attack.def_tanks_lost   ||0) > 0) defLosses.push(`🚗 ${Number(attack.def_tanks_lost).toLocaleString()}`);
+  if ((attack.def_aircraft_lost||0) > 0) defLosses.push(`✈️ ${Number(attack.def_aircraft_lost).toLocaleString()}`);
+  if ((attack.def_ships_lost   ||0) > 0) defLosses.push(`🚢 ${Number(attack.def_ships_lost).toLocaleString()}`);
 
-  const color = attack.victor === attack.attid ? 0x2ecc71 : 0xe74c3c;
+  // Build description — narrative style
+  const typeLabel  = attackType.replace(/_/g, ' ');
+  const resultLine = attack.success === 'UTTER_FAILURE'
+    ? `The attack was an **UTTER FAILURE**.`
+    : attack.success === 'PYRRHIC_VICTORY'
+    ? `It was a **PYRRHIC VICTORY** — won at great cost.`
+    : attack.success === 'MODERATE_SUCCESS'
+    ? `It was a **MODERATE SUCCESS**.`
+    : `It was an **IMMENSE TRIUMPH!**`;
+
+  const description =
+    `**[${attack.att_nation_name}](https://politicsandwar.com/nation/id=${attack.attid})** launched a **${typeLabel}** attack against ` +
+    `**[${attack.def_nation_name}](https://politicsandwar.com/nation/id=${attack.defid})**.
+
+` +
+    `${resultLine}`;
 
   const embed = new EmbedBuilder()
-    .setTitle(`${emoji} ${attackType.replace(/_/g, ' ')}`)
+    .setTitle(`${emoji} ${typeLabel} Attack`)
     .setColor(color)
-    .setDescription(
-      `**[${attack.att_nation_name}](https://politicsandwar.com/nation/id=${attack.attid})** attacked ` +
-      `**[${attack.def_nation_name}](https://politicsandwar.com/nation/id=${attack.defid})**\n` +
-      `Result: ${success}`
-    )
+    .setDescription(description)
     .setTimestamp(new Date(attack.date));
 
-  if (attack.infra_destroyed > 0) {
+  // Get themed GIF — set as image on the embed
+  const gif = getGif(attackType, attack.success);
+  if (gif) embed.setImage(gif);
+
+  if ((attack.infra_destroyed||0) > 0) {
     embed.addFields({
-      name: '🏗️ Infrastructure Destroyed',
-      value: `${attack.infra_destroyed.toFixed(2)} infra worth $${Number(attack.infra_destroyed_value || 0).toLocaleString()}`,
+      name:  '🏗️ Infrastructure Destroyed',
+      value: `${Number(attack.infra_destroyed).toFixed(2)} infra — worth $${Number(attack.infra_destroyed_value||0).toLocaleString()}`,
       inline: false,
     });
   }
@@ -199,8 +217,8 @@ function buildAttackEmbed(attack) {
   if (attLosses.length > 0) embed.addFields({ name: `⚔️ Attacker Losses (${attack.att_nation_name})`, value: attLosses.join(' | '), inline: true });
   if (defLosses.length > 0) embed.addFields({ name: `🛡️ Defender Losses (${attack.def_nation_name})`, value: defLosses.join(' | '), inline: true });
 
-  const munUsed = (attack.att_mun_used || 0) + (attack.def_mun_used || 0);
-  const gasUsed = (attack.att_gas_used || 0) + (attack.def_gas_used || 0);
+  const munUsed = (attack.att_mun_used||0) + (attack.def_mun_used||0);
+  const gasUsed = (attack.att_gas_used||0) + (attack.def_gas_used||0);
   if (munUsed > 0 || gasUsed > 0) {
     embed.addFields({ name: '⛽ Resources Used', value: `Munitions: ${munUsed.toFixed(1)} | Gasoline: ${gasUsed.toFixed(1)}`, inline: false });
   }
