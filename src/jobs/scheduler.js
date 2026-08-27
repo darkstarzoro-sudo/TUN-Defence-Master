@@ -1,6 +1,5 @@
 // ============================================================
-// src/jobs/scheduler.js
-// Spy detection removed — too many false positives from war losses
+// src/jobs/scheduler.js — attack reports every 2 minutes
 // ============================================================
 
 const cron = require('node-cron');
@@ -12,6 +11,7 @@ const { checkAllianceDefense } = require('../systems/defense/warMonitor');
 const { checkVacationChanges, checkWarExpiry } = require('../systems/intelligence/vacationTracker');
 const { checkDnrViolations } = require('../systems/intelligence/dnrMonitor');
 const { runAutoBackup } = require('./backupJob');
+const { checkWarRoomAttacks } = require('../systems/military/warRoomManager');
 
 async function startAllJobs(client) {
   logger.info('Starting background job scheduler...');
@@ -28,6 +28,11 @@ async function startAllJobs(client) {
     await checkAllianceDefense(client);
   });
 
+  // War room attack reports every 2 minutes
+  cron.schedule('*/2 * * * *', async () => {
+    await checkWarRoomAttacks(client);
+  });
+
   // DNR check every 3 minutes
   cron.schedule('*/3 * * * *', async () => {
     logger.debug('🚫 Checking DNR violations...');
@@ -40,19 +45,19 @@ async function startAllJobs(client) {
     await checkBeigeExits(client);
   });
 
-  // Military change alerts every 15 minutes
+  // Military changes every 15 minutes
   cron.schedule('*/15 * * * *', async () => {
     logger.debug('🔍 Checking military changes...');
     await checkMilitaryChanges(client);
   });
 
-  // Vacation mode changes every 15 minutes
+  // Vacation mode every 15 minutes
   cron.schedule('*/15 * * * *', async () => {
     logger.debug('🏖️ Checking vacation mode changes...');
     await checkVacationChanges(client);
   });
 
-  // War expiry alerts every 30 minutes
+  // War expiry every 30 minutes
   cron.schedule('*/30 * * * *', async () => {
     logger.debug('⏰ Checking war expiry...');
     await checkWarExpiry(client);
@@ -70,7 +75,7 @@ async function startAllJobs(client) {
     await generateDailyReport(client);
   });
 
-  logger.info('✅ Scheduler — defense 60s | DNR 3min | beige 5min | military/vacation 15min | expiry 30min | backup 6h | daily 08:00 UTC');
+  logger.info('✅ Scheduler — defense 60s | attacks 2min | DNR 3min | beige 5min | military/vacation 15min | expiry 30min | backup 6h | daily 08:00 UTC');
 }
 
 module.exports = { startAllJobs };

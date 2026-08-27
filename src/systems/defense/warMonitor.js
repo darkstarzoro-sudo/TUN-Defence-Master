@@ -1,7 +1,6 @@
 // ============================================================
 // src/systems/defense/warMonitor.js
-// Fixed: treaty sync truly hourly (uses in-memory timestamp)
-// Fixed: war room warning shown once per cycle not per war
+// Fixed: resistance and MAP now fetched in main war query
 // ============================================================
 
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
@@ -12,9 +11,7 @@ const { isLegitimateCounter, syncTreatiesFromPW } = require('../../utils/counter
 const { getOrCreateWarRoom, removeMemberFromWarRoom } = require('../military/warRoomManager');
 const logger = require('../../utils/logger');
 
-const checking = new Set();
-
-// In-memory last sync time per guild — avoids DB read/write every 60s
+const checking       = new Set();
 const lastTreatySync = new Map();
 
 async function checkAllianceDefense(client) {
@@ -32,7 +29,7 @@ async function checkAllianceDefense(client) {
 
 async function processGuildWars(client, guildId, allianceId) {
   try {
-    // Sync treaties at most once per hour using in-memory timestamp
+    // Treaty sync — at most once per hour (in-memory)
     const now      = Date.now();
     const lastSync = lastTreatySync.get(guildId) || 0;
     if (now - lastSync > 60 * 60 * 1000) {
@@ -46,14 +43,25 @@ async function processGuildWars(client, guildId, allianceId) {
     const alertChannel = client.channels.cache.get(channelRow.discord_channel_id);
     if (!alertChannel) return;
 
+    // ── Full war query including resistance and MAP ──────────
     const data = await pwQuery(`
       query GetAllianceWars($allianceId:[Int]) {
         wars(alliance_id:$allianceId,active:true,first:100) {
           data {
             id att_alliance_id def_alliance_id attid defid
-            attacker{id nation_name score alliance_position soldiers tanks aircraft ships missiles nukes spies alliance{id name}}
-            defender{id nation_name score alliance_position soldiers tanks aircraft ships missiles nukes spies alliance{id name}}
+            att_resistance def_resistance
+            att_map def_map
             turnsleft
+            attacker {
+              id nation_name score alliance_position
+              soldiers tanks aircraft ships missiles nukes spies
+              alliance { id name }
+            }
+            defender {
+              id nation_name score alliance_position
+              soldiers tanks aircraft ships missiles nukes spies
+              alliance { id name }
+            }
           }
         }
       }
@@ -71,12 +79,9 @@ async function processGuildWars(client, guildId, allianceId) {
       return row?.guild_id === guildId;
     });
 
-    // Check war room config ONCE per cycle
-    const catRow = queryOne(`SELECT setting_value FROM alert_settings WHERE guild_id=? AND alert_type='warroom' AND setting_key='category_id'`, [guildId]);
+    const catRow          = queryOne(`SELECT setting_value FROM alert_settings WHERE guild_id=? AND alert_type='warroom' AND setting_key='category_id'`, [guildId]);
     const warRoomsEnabled = !!catRow;
-    if (!warRoomsEnabled) {
-      logger.debug(`War rooms not configured for guild ${guildId} — run /warroom setup to enable`);
-    }
+    if (!warRoomsEnabled) logger.debug(`War rooms not configured for guild ${guildId} — run /warroom setup`);
 
     for (const war of allWars.filter(w => String(w.def_alliance_id) === allianceStr)) {
       await processWar(client, discordGuild, guildId, allianceId, war, false, alertChannel, discordMap, ourMembers, warRoomsEnabled);
@@ -86,7 +91,6 @@ async function processGuildWars(client, guildId, allianceId) {
     }
 
     await checkEndedWars(client, discordGuild, guildId, allWars);
-
   } catch (err) {
     logger.error(`War monitor error for guild ${guildId}: ${err.message}`);
   }
@@ -114,10 +118,21 @@ async function processWar(client, guild, guildId, allianceId, war, isOffensive, 
 
   const ourDiscordId = discordMap.get(ourNation.id) || discordMap.get(String(ourNation.id));
 
+  // Build enriched war object with resistance and MAP
+  const weAreAttacker = isOffensive;
+  const enrichedWar = {
+    id:              war.id,
+    isOurAttack:     weAreAttacker,
+    ourNationId:     ourNation.id,
+    turnsleft:       war.turnsleft,
+    ourResistance:   weAreAttacker ? war.att_resistance : war.def_resistance,
+    ourMAP:          weAreAttacker ? war.att_map        : war.def_map,
+    enemyResistance: weAreAttacker ? war.def_resistance : war.att_resistance,
+    enemyMAP:        weAreAttacker ? war.def_map        : war.att_map,
+  };
+
   if (warRoomsEnabled && guild) {
-    await getOrCreateWarRoom(client, guild, guildId, enemyNation, ourDiscordId, ourNation.nation_name, {
-      id: war.id, isOurAttack: isOffensive, ourNationId: ourNation.id, turnsleft: war.turnsleft,
-    }, isCounter, counterDetail);
+    await getOrCreateWarRoom(client, guild, guildId, enemyNation, ourDiscordId, ourNation.nation_name, enrichedWar, isCounter, counterDetail);
   }
 
   if (!isOffensive) {
