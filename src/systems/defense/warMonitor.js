@@ -1,6 +1,7 @@
 // ============================================================
 // src/systems/defense/warMonitor.js
-// Fixed: resistance and MAP now fetched in main war query
+// CRITICAL FIX: removed att_map/def_map (not in P&W API)
+// MAP is available in warattacks query but NOT in wars query
 // ============================================================
 
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
@@ -37,20 +38,21 @@ async function processGuildWars(client, guildId, allianceId) {
       lastTreatySync.set(guildId, now);
     }
 
-    const channelRow = queryOne(`SELECT discord_channel_id FROM guild_channels WHERE guild_id=? AND channel_type='wars'`, [guildId]) ||
-                       queryOne(`SELECT discord_channel_id FROM guild_channels WHERE guild_id=? AND channel_type='intel'`, [guildId]);
+    const channelRow =
+      queryOne(`SELECT discord_channel_id FROM guild_channels WHERE guild_id=? AND channel_type='wars'`, [guildId]) ||
+      queryOne(`SELECT discord_channel_id FROM guild_channels WHERE guild_id=? AND channel_type='intel'`, [guildId]);
     if (!channelRow) return;
     const alertChannel = client.channels.cache.get(channelRow.discord_channel_id);
     if (!alertChannel) return;
 
-    // ── Full war query including resistance and MAP ──────────
+    // NOTE: att_map/def_map do NOT exist on the wars query in P&W API
+    // Resistance fields ARE available
     const data = await pwQuery(`
       query GetAllianceWars($allianceId:[Int]) {
-        wars(alliance_id:$allianceId,active:true,first:100) {
+        wars(alliance_id:$allianceId, active:true, first:100) {
           data {
             id att_alliance_id def_alliance_id attid defid
             att_resistance def_resistance
-            att_map def_map
             turnsleft
             attacker {
               id nation_name score alliance_position
@@ -79,9 +81,12 @@ async function processGuildWars(client, guildId, allianceId) {
       return row?.guild_id === guildId;
     });
 
+    // Check war room config ONCE per cycle
     const catRow          = queryOne(`SELECT setting_value FROM alert_settings WHERE guild_id=? AND alert_type='warroom' AND setting_key='category_id'`, [guildId]);
     const warRoomsEnabled = !!catRow;
-    if (!warRoomsEnabled) logger.debug(`War rooms not configured for guild ${guildId} — run /warroom setup`);
+    if (!warRoomsEnabled) {
+      logger.debug(`War rooms not configured for guild ${guildId} — run /warroom setup`);
+    }
 
     for (const war of allWars.filter(w => String(w.def_alliance_id) === allianceStr)) {
       await processWar(client, discordGuild, guildId, allianceId, war, false, alertChannel, discordMap, ourMembers, warRoomsEnabled);
@@ -91,6 +96,7 @@ async function processGuildWars(client, guildId, allianceId) {
     }
 
     await checkEndedWars(client, discordGuild, guildId, allWars);
+
   } catch (err) {
     logger.error(`War monitor error for guild ${guildId}: ${err.message}`);
   }
@@ -118,21 +124,25 @@ async function processWar(client, guild, guildId, allianceId, war, isOffensive, 
 
   const ourDiscordId = discordMap.get(ourNation.id) || discordMap.get(String(ourNation.id));
 
-  // Build enriched war object with resistance and MAP
-  const weAreAttacker = isOffensive;
+  // Build enriched war object — no MAP (not available in wars query)
+  const isOurAttack = isOffensive;
   const enrichedWar = {
     id:              war.id,
-    isOurAttack:     weAreAttacker,
+    isOurAttack,
     ourNationId:     ourNation.id,
     turnsleft:       war.turnsleft,
-    ourResistance:   weAreAttacker ? war.att_resistance : war.def_resistance,
-    ourMAP:          weAreAttacker ? war.att_map        : war.def_map,
-    enemyResistance: weAreAttacker ? war.def_resistance : war.att_resistance,
-    enemyMAP:        weAreAttacker ? war.def_map        : war.att_map,
+    ourResistance:   isOurAttack ? war.att_resistance : war.def_resistance,
+    ourMAP:          null, // Not available in wars query
+    enemyResistance: isOurAttack ? war.def_resistance : war.att_resistance,
+    enemyMAP:        null, // Not available in wars query
   };
 
   if (warRoomsEnabled && guild) {
-    await getOrCreateWarRoom(client, guild, guildId, enemyNation, ourDiscordId, ourNation.nation_name, enrichedWar, isCounter, counterDetail);
+    await getOrCreateWarRoom(
+      client, guild, guildId,
+      enemyNation, ourDiscordId, ourNation.nation_name,
+      enrichedWar, isCounter, counterDetail
+    );
   }
 
   if (!isOffensive) {
@@ -170,14 +180,14 @@ async function sendDefenseAlert(channel, guildId, war, defender, attacker, defDi
       .setColor(isCounter ? 0x2ecc71 : 0xe74c3c)
       .setDescription(isCounter && counterDetail ? `✅ _${counterDetail}_` : null)
       .addFields(
-        { name: '🛡️ Our Member',     value: `**[${defender.nation_name}](https://politicsandwar.com/nation/id=${defender.id})**\nScore: ${defender.score?.toLocaleString()||'?'}`, inline: true },
+        { name: '🛡️ Our Member',     value: `**[${defender.nation_name}](https://politicsandwar.com/nation/id=${defender.id})**\nScore: ${defender.score?.toLocaleString()||'?'}\n❤️ Resistance: **${(isCounter ? war.def_resistance : war.att_resistance) ?? '?'}/100**`, inline: true },
         { name: '🪖 Their Military', value: `👮 ${(defender.soldiers||0).toLocaleString()} | 🚗 ${(defender.tanks||0).toLocaleString()} | ✈️ ${defender.aircraft||0} | 🚢 ${defender.ships||0}\n🚀 ${defender.missiles||0} | ☢️ ${defender.nukes||0}`, inline: true },
         { name: '\u200b', value: '\u200b', inline: false },
-        { name: '⚔️ Attacker',       value: `**[${attacker.nation_name}](https://politicsandwar.com/nation/id=${attacker.id})**\nAlliance: ${attacker.alliance?.name||'None'}\nScore: ${attacker.score?.toLocaleString()||'?'}`, inline: true },
+        { name: '⚔️ Attacker',       value: `**[${attacker.nation_name}](https://politicsandwar.com/nation/id=${attacker.id})**\nAlliance: ${attacker.alliance?.name||'None'}\nScore: ${attacker.score?.toLocaleString()||'?'}\n❤️ Resistance: **${(isCounter ? war.att_resistance : war.def_resistance) ?? '?'}/100**`, inline: true },
         { name: '🪖 Enemy Military', value: `👮 ${(attacker.soldiers||0).toLocaleString()} | 🚗 ${(attacker.tanks||0).toLocaleString()} | ✈️ ${attacker.aircraft||0} | 🚢 ${attacker.ships||0}\n🚀 ${attacker.missiles||0} | ☢️ ${attacker.nukes||0}`, inline: true },
         { name: `✅ Eligible Counters (${counters.length})`, value: counters.length > 0 ? counters.join('\n') : '❌ No members in range', inline: false },
       )
-      .setFooter({ text: `War ID: ${war.id}` })
+      .setFooter({ text: `War ID: ${war.id} | MAP not available via API — check war page` })
       .setTimestamp();
 
     const row = new ActionRowBuilder().addComponents(
