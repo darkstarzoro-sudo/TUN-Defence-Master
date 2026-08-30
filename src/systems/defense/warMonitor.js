@@ -9,7 +9,7 @@ const { query, run, queryOne } = require('../../utils/database');
 const { pwQuery, getAllianceMembers, MEMBER_POSITIONS } = require('../../utils/pwApi');
 const { buildNationToDiscordMap } = require('../../utils/nationLink');
 const { isLegitimateCounter, syncTreatiesFromPW } = require('../../utils/counterDetector');
-const { getOrCreateWarRoom, removeMemberFromWarRoom } = require('../military/warRoomManager');
+const { removeMemberFromWarRoom } = require('../military/warRoomManager');
 const logger = require('../../utils/logger');
 
 const checking       = new Set();
@@ -124,26 +124,14 @@ async function processWar(client, guild, guildId, allianceId, war, isOffensive, 
 
   const ourDiscordId = discordMap.get(ourNation.id) || discordMap.get(String(ourNation.id));
 
-  // Build enriched war object — no MAP (not available in wars query)
-  const isOurAttack = isOffensive;
-  const enrichedWar = {
-    id:              war.id,
-    isOurAttack,
-    ourNationId:     ourNation.id,
-    turnsleft:       war.turnsleft,
-    ourResistance:   isOurAttack ? war.att_resistance : war.def_resistance,
-    ourMAP:          null, // Not available in wars query
-    enemyResistance: isOurAttack ? war.def_resistance : war.att_resistance,
-    enemyMAP:        null, // Not available in wars query
-  };
-
-  if (warRoomsEnabled && guild) {
-    await getOrCreateWarRoom(
-      client, guild, guildId,
-      enemyNation, ourDiscordId, ourNation.nation_name,
-      enrichedWar, isCounter, counterDetail
-    );
-  }
+  // NOTE: War room creation is intentionally NOT done here anymore.
+  // This passive monitor runs every 60s across the whole alliance, and on any
+  // restart/fresh state it would otherwise treat every pre-existing active war
+  // as "new" and mass-create a room for each one (hit Discord's 50-channel-
+  // per-category cap in testing). Room creation is now an explicit action via
+  // `/warroom sync` (creates rooms for active wars not yet tracked) — this
+  // function still handles defense pings, counter alerts, and cleanup of
+  // rooms whose wars have ended (see checkEndedWars below).
 
   if (!isOffensive) {
     await sendDefenseAlert(alertChannel, guildId, war, ourNation, enemyNation, ourDiscordId, ourMembers, discordMap, isCounter, counterDetail);

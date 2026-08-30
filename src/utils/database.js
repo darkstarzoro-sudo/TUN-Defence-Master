@@ -48,7 +48,7 @@ async function connectDatabase() {
   addNationLinksTable();
   addSpyTables();
   addDnrTable();
-  addWarRoomTables();
+  
   logger.info(`Database ready at: ${DB_PATH}`);
 }
 
@@ -269,7 +269,7 @@ function addWarRoomTables() {
   } catch (err) {}
 }
 
-module.exports = { connectDatabase, query, run, queryOne, saveDatabase, addPhase6Tables, addPhase7Tables, addPhase9Tables, addPhase10Tables, addPhase12Tables, addNationLinksTable, addSpyTables, addDnrTable };
+module.exports = { connectDatabase, query, run, queryOne, saveDatabase, addPhase6Tables, addPhase7Tables, addPhase9Tables, addPhase10Tables, addPhase12Tables, addNationLinksTable, addSpyTables, addDnrTable, addWarRoomTables };
 
 // NOTE: This function is appended — new tables added in Phase 6
 // Call addPhase6Tables() from connectDatabase if needed,

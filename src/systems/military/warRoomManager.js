@@ -92,8 +92,8 @@ async function fetchNationData(nationId) {
 async function fetchNewAttacks(warId, lastAttackId) {
   try {
     const data = await pwQuery(`
-      query A($warId:[Int]){warattacks(war_id:$warId,orderby:{column:ID,order:DESC},first:20){data{
-        id war_id attid defid att_nation_name def_nation_name
+      query A($warId:[Int]){warattacks(war_id:$warId,orderBy:{column:ID,order:DESC},first:20){data{
+        id war_id attid defid
         type victor success
         att_mun_used def_mun_used att_gas_used def_gas_used
         infra_destroyed infra_destroyed_value
@@ -108,7 +108,16 @@ async function fetchNewAttacks(warId, lastAttackId) {
   } catch (err) { logger.error(`fetchNewAttacks: ${err.message}`); return []; }
 }
 
-function buildAttackEmbed(attack) {
+function resolveAttackName(nationId, ctx) {
+  if (String(nationId)===String(ctx?.ourNationId))   return ctx.ourNationName||'Our Member';
+  if (String(nationId)===String(ctx?.enemyNationId))  return ctx.enemyNationName||'Enemy';
+  return `Nation #${nationId}`;
+}
+
+// NOTE: WarAttack does NOT expose att_nation_name/def_nation_name in the P&W API
+// (confirmed via live GraphQL validation error). Names are resolved from the
+// war room's own known nations (ctx) instead of the attack payload.
+function buildAttackEmbed(attack, ctx={}) {
   const typeEmojis = { GROUND:'⚔️', AIRSTRIKE_INFRA:'✈️', AIRSTRIKE_SOLDIERS:'✈️', AIRSTRIKE_TANKS:'✈️', AIRSTRIKE_MONEY:'✈️', AIRSTRIKE_SHIP:'✈️', AIRSTRIKE_AIR:'✈️', NAVAL:'🚢', NAVAL_INFRA:'🚢', MISSILE:'🚀', NUKE:'☢️', FORTIFY:'🏰', PEACE:'🕊️' };
   const successLabels = { IMMENSE_TRIUMPH:'🏆 IMMENSE TRIUMPH', MODERATE_SUCCESS:'✅ MODERATE SUCCESS', PYRRHIC_VICTORY:'⚠️ PYRRHIC VICTORY', UTTER_FAILURE:'❌ UTTER FAILURE', VICTORY:'✅ VICTORY' };
   const attackType = attack.type||'UNKNOWN';
@@ -117,6 +126,9 @@ function buildAttackEmbed(attack) {
   const isAttWin   = String(attack.victor)===String(attack.attid);
   const color      = isAttWin ? 0x2ecc71 : 0xe74c3c;
   const typeLabel  = attackType.replace(/_/g,' ');
+
+  const attName = resolveAttackName(attack.attid, ctx);
+  const defName = resolveAttackName(attack.defid, ctx);
 
   const resultLine = attack.success==='UTTER_FAILURE' ? 'The attack was an **UTTER FAILURE**.'
     : attack.success==='PYRRHIC_VICTORY' ? 'It was a **PYRRHIC VICTORY** — won at great cost.'
@@ -127,8 +139,8 @@ function buildAttackEmbed(attack) {
     .setTitle(`${emoji} ${typeLabel} Attack`)
     .setColor(color)
     .setDescription(
-      `**[${attack.att_nation_name}](https://politicsandwar.com/nation/id=${attack.attid})** launched a **${typeLabel}** attack against ` +
-      `**[${attack.def_nation_name}](https://politicsandwar.com/nation/id=${attack.defid})**.\n\n${resultLine}`
+      `**[${attName}](https://politicsandwar.com/nation/id=${attack.attid})** launched a **${typeLabel}** attack against ` +
+      `**[${defName}](https://politicsandwar.com/nation/id=${attack.defid})**.\n\n${resultLine}`
     )
     .setTimestamp(new Date(attack.date));
 
@@ -146,8 +158,8 @@ function buildAttackEmbed(attack) {
   if ((attack.def_ships_lost||0)>0)    defLosses.push(`🚢 ${Number(attack.def_ships_lost).toLocaleString()}`);
 
   if ((attack.infra_destroyed||0)>0) embed.addFields({ name:'🏗️ Infrastructure Destroyed', value:`${Number(attack.infra_destroyed).toFixed(2)} infra — $${Number(attack.infra_destroyed_value||0).toLocaleString()}`, inline:false });
-  if (attLosses.length>0) embed.addFields({ name:`⚔️ Attacker Losses (${attack.att_nation_name})`, value:attLosses.join(' | '), inline:true });
-  if (defLosses.length>0) embed.addFields({ name:`🛡️ Defender Losses (${attack.def_nation_name})`, value:defLosses.join(' | '), inline:true });
+  if (attLosses.length>0) embed.addFields({ name:`⚔️ Attacker Losses (${attName})`, value:attLosses.join(' | '), inline:true });
+  if (defLosses.length>0) embed.addFields({ name:`🛡️ Defender Losses (${defName})`, value:defLosses.join(' | '), inline:true });
 
   const munUsed=(attack.att_mun_used||0)+(attack.def_mun_used||0);
   const gasUsed=(attack.att_gas_used||0)+(attack.def_gas_used||0);
@@ -166,16 +178,22 @@ async function processRoomAttacks(client, room) {
   try {
     const channel = client.channels.cache.get(room.channel_id);
     if (!channel) return;
-    const members = query('SELECT DISTINCT war_id FROM war_room_members WHERE war_room_id=?', [room.id]).rows;
-    for (const { war_id } of members) {
+    const members = query('SELECT DISTINCT war_id, nation_id, nation_name FROM war_room_members WHERE war_room_id=?', [room.id]).rows;
+    for (const { war_id, nation_id, nation_name } of members) {
       if (!war_id) continue;
+      const ctx = {
+        ourNationId:     nation_id,
+        ourNationName:   nation_name,
+        enemyNationId:   room.enemy_nation_id,
+        enemyNationName: room.enemy_nation_name,
+      };
       const lastRow = queryOne(`SELECT setting_value FROM alert_settings WHERE guild_id=? AND alert_type='war_attack_last' AND setting_key=?`, [room.guild_id, String(war_id)]);
       const newAttacks = await fetchNewAttacks(war_id, lastRow?.setting_value||null);
       if (newAttacks.length===0) continue;
       newAttacks.sort((a,b)=>parseInt(a.id)-parseInt(b.id));
       for (const attack of newAttacks) {
         if (['FORTIFY'].includes(attack.type)) continue;
-        await channel.send({ embeds:[buildAttackEmbed(attack)] }).catch(()=>{});
+        await channel.send({ embeds:[buildAttackEmbed(attack, ctx)] }).catch(()=>{});
         run(`INSERT INTO alert_settings (guild_id,alert_type,setting_key,setting_value) VALUES(?,'war_attack_last',?,?) ON CONFLICT(guild_id,alert_type,setting_key) DO UPDATE SET setting_value=excluded.setting_value`,
           [room.guild_id, String(war_id), String(attack.id)]);
       }
@@ -211,6 +229,12 @@ async function createWarRoom(client, guild, guildId, enemyNation, ourDiscordId, 
   if (!catRow) return null;
   const category = guild.channels.cache.get(catRow.setting_value);
   if (!category) return null;
+
+  const childCount = guild.channels.cache.filter(c => c.parentId === category.id).size;
+  if (childCount >= 50) {
+    logger.warn(`War room category "${category.name}" is full (50 channels) — skipping room for ${enemyNation.nation_name}. Archive/close old war rooms or use a second category.`);
+    return null;
+  }
 
   const milRole = queryOne(`SELECT discord_role_id FROM guild_roles WHERE guild_id=? AND role_type='military'`, [guildId]);
   const govRole = queryOne(`SELECT discord_role_id FROM guild_roles WHERE guild_id=? AND role_type='government'`, [guildId]);
