@@ -199,7 +199,7 @@ function buildAttackReport(attack, ctx={}) {
     : 'and it was an **immense triumph**';
 
   const lines = [];
-  lines.push(`${typeInfo.emoji} **[${attName}](https://politicsandwar.com/nation/id=${attack.attid})** ${typeInfo.verb} **[${defName}](https://politicsandwar.com/nation/id=${attack.defid})** (${typeInfo.label}), ${resultText}!`);
+  lines.push(`${typeInfo.emoji} **${attName}** ${typeInfo.verb} **${defName}** (${typeInfo.label}), ${resultText}!`);
 
   if ((attack.infra_destroyed||0)>0) {
     lines.push(`🏗️ Infrastructure destroyed: ${Number(attack.infra_destroyed).toFixed(2)} (worth $${Number(attack.infra_destroyed_value||0).toLocaleString()})`);
