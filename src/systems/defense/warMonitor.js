@@ -9,7 +9,7 @@ const { query, run, queryOne } = require('../../utils/database');
 const { pwQuery, getAllianceMembers, MEMBER_POSITIONS } = require('../../utils/pwApi');
 const { buildNationToDiscordMap } = require('../../utils/nationLink');
 const { isLegitimateCounter, syncTreatiesFromPW } = require('../../utils/counterDetector');
-const { removeMemberFromWarRoom } = require('../military/warRoomManager');
+const { removeMemberFromWarRoom, isInactiveNation, daysSinceActive, closeWarRoomForInactivity } = require('../military/warRoomManager');
 const logger = require('../../utils/logger');
 
 const checking       = new Set();
@@ -55,12 +55,12 @@ async function processGuildWars(client, guildId, allianceId) {
             att_resistance def_resistance
             turnsleft
             attacker {
-              id nation_name score alliance_position
+              id nation_name score alliance_position last_active
               soldiers tanks aircraft ships missiles nukes spies
               alliance { id name }
             }
             defender {
-              id nation_name score alliance_position
+              id nation_name score alliance_position last_active
               soldiers tanks aircraft ships missiles nukes spies
               alliance { id name }
             }
@@ -96,6 +96,7 @@ async function processGuildWars(client, guildId, allianceId) {
     }
 
     await checkEndedWars(client, discordGuild, guildId, allWars);
+    await checkInactiveWarRooms(client, discordGuild, guildId, allWars);
 
   } catch (err) {
     logger.error(`War monitor error for guild ${guildId}: ${err.message}`);
@@ -204,6 +205,32 @@ async function checkEndedWars(client, guild, guildId, activeWars) {
     }
   } catch (err) {
     logger.error(`checkEndedWars error: ${err.message}`);
+  }
+}
+
+// Closes war rooms whose enemy has gone inactive for 5+ days — these are
+// almost always abandoned raid targets, not real ongoing fights.
+async function checkInactiveWarRooms(client, guild, guildId, allWars) {
+  try {
+    if (!guild) return;
+    const rooms = query(`SELECT * FROM war_rooms WHERE guild_id=? AND status='active'`, [guildId]).rows;
+    if (rooms.length === 0) return;
+
+    const lastActiveByNation = new Map();
+    for (const w of allWars) {
+      if (w.attacker) lastActiveByNation.set(String(w.attacker.id), w.attacker.last_active);
+      if (w.defender) lastActiveByNation.set(String(w.defender.id), w.defender.last_active);
+    }
+
+    for (const room of rooms) {
+      const lastActive = lastActiveByNation.get(String(room.enemy_nation_id));
+      if (lastActive === undefined) continue; // war ended this cycle — checkEndedWars already handles that path
+      if (isInactiveNation(lastActive)) {
+        await closeWarRoomForInactivity(client, guild, room, daysSinceActive(lastActive));
+      }
+    }
+  } catch (err) {
+    logger.error(`checkInactiveWarRooms error: ${err.message}`);
   }
 }
 

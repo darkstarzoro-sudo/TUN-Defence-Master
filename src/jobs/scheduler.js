@@ -28,8 +28,8 @@ async function startAllJobs(client) {
     await checkAllianceDefense(client);
   });
 
-  // War room attack reports every 2 minutes
-  cron.schedule('*/2 * * * *', async () => {
+  // War room attack reports every 1 minute
+  cron.schedule('* * * * *', async () => {
     await checkWarRoomAttacks(client);
   });
 
@@ -75,7 +75,7 @@ async function startAllJobs(client) {
     await generateDailyReport(client);
   });
 
-  logger.info('✅ Scheduler — defense 60s | attacks 2min | DNR 3min | beige 5min | military/vacation 15min | expiry 30min | backup 6h | daily 08:00 UTC');
+  logger.info('✅ Scheduler — defense 60s | attacks 1min | DNR 3min | beige 5min | military/vacation 15min | expiry 30min | backup 6h | daily 08:00 UTC');
 }
 
 module.exports = { startAllJobs };

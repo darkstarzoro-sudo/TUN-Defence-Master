@@ -7,8 +7,40 @@
 const { ChannelType, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { query, run, queryOne } = require('../../utils/database');
 const { pwQuery } = require('../../utils/pwApi');
-const { getGif } = require('../../utils/attackGifs');
+const { getGif, normalizeAttackType } = require('../../utils/attackGifs');
 const logger = require('../../utils/logger');
+
+// Enemy nations inactive this many days are treated as raids/abandoned
+// accounts — we don't want war rooms for those.
+const INACTIVITY_DAYS = 5;
+
+// P&W DateTime fields come back as "Y-m-d H:i:s" in UTC with no timezone
+// suffix — append Z so JS parses it as UTC instead of local time.
+function daysSinceActive(lastActiveStr) {
+  if (!lastActiveStr) return null;
+  const iso = lastActiveStr.includes('T') ? lastActiveStr : lastActiveStr.replace(' ', 'T') + 'Z';
+  const then = new Date(iso);
+  if (isNaN(then.getTime())) return null;
+  return (Date.now() - then.getTime()) / 86400000;
+}
+
+function isInactiveNation(lastActiveStr, days = INACTIVITY_DAYS) {
+  const d = daysSinceActive(lastActiveStr);
+  return d !== null && d >= days;
+}
+
+async function closeWarRoomForInactivity(client, guild, room, daysInactive) {
+  try {
+    const channel = guild?.channels.cache.get(room.channel_id);
+    if (channel) {
+      await channel.send({ content: `🚫 Closing this war room — **${room.enemy_nation_name}** has been inactive for ${Math.floor(daysInactive)}+ days (raid target, not an active fight). Deleting in 10 seconds.` }).catch(()=>{});
+      setTimeout(async () => { await channel.delete().catch(()=>{}); }, 10000);
+    }
+    run('DELETE FROM war_room_members WHERE war_room_id=?', [room.id]);
+    run('UPDATE war_rooms SET status=? WHERE id=?', ['closed', room.id]);
+    logger.info(`War room closed for inactivity: ${room.enemy_nation_name} (${Math.floor(daysInactive)}d inactive)`);
+  } catch (err) { logger.error(`closeWarRoomForInactivity: ${err.message}`); }
+}
 
 function buildWarCard(war, ourMember, enemyNation, assignedTo=null, isCounter=false, counterDetail=null) {
   const color   = war.isOurAttack ? 0x3498db : 0xe74c3c;
@@ -108,65 +140,91 @@ async function fetchNewAttacks(warId, lastAttackId) {
   } catch (err) { logger.error(`fetchNewAttacks: ${err.message}`); return []; }
 }
 
+// WarAttack.success is returned as an Int by the P&W API (confirmed by a live
+// "successOutcome.includes is not a function" crash), NOT a string enum like
+// "IMMENSE_TRIUMPH". It represents how many of the 3 combat rolls the attacker
+// won: 0=Utter Failure, 1=Pyrrhic Victory, 2=Moderate Success, 3=Immense Triumph.
+const SUCCESS_CODE_MAP = { 0:'UTTER_FAILURE', 1:'PYRRHIC_VICTORY', 2:'MODERATE_SUCCESS', 3:'IMMENSE_TRIUMPH' };
+function normalizeSuccess(success) {
+  if (typeof success === 'string') return success; // already a tag (defensive, in case API changes back)
+  return SUCCESS_CODE_MAP[Number(success)] || 'MODERATE_SUCCESS';
+}
+
 function resolveAttackName(nationId, ctx) {
   if (String(nationId)===String(ctx?.ourNationId))   return ctx.ourNationName||'Our Member';
   if (String(nationId)===String(ctx?.enemyNationId))  return ctx.enemyNationName||'Enemy';
   return `Nation #${nationId}`;
 }
 
+// Human-friendly names for the P&W AttackType enum — nobody outside the
+// game knows what "AIRVAIR" or "AIRVSHIPS" means, so we translate these
+// for the war room reports.
+const ATTACK_TYPE_INFO = {
+  GROUND:        { emoji:'⚔️', label:'Ground Attack',              verb:'launched a ground assault on' },
+  AIRVINFRA:     { emoji:'✈️', label:'Airstrike on Infrastructure', verb:'bombed the infrastructure of' },
+  AIRVSOLDIERS:  { emoji:'✈️', label:'Airstrike on Soldiers',       verb:'bombed the troops of' },
+  AIRVTANKS:     { emoji:'✈️', label:'Airstrike on Tanks',          verb:'bombed the tanks of' },
+  AIRVMONEY:     { emoji:'✈️', label:'Airstrike on Treasury',       verb:'raided the treasury of' },
+  AIRVSHIPS:     { emoji:'✈️', label:'Airstrike on Ships',          verb:'bombed the navy of' },
+  AIRVAIR:       { emoji:'✈️', label:'Dogfight',                    verb:'engaged in a dogfight with' },
+  NAVAL:         { emoji:'🚢', label:'Naval Attack',                verb:'launched a naval attack on' },
+  MISSILE:       { emoji:'🚀', label:'Missile Strike',              verb:'fired a missile at' },
+  MISSILEFAIL:   { emoji:'🛰️', label:'Missile Intercepted',         verb:'attempted a missile strike on' },
+  NUKE:          { emoji:'☢️', label:'Nuclear Strike',              verb:'launched a nuke at' },
+  NUKEFAIL:      { emoji:'🛡️', label:'Nuke Intercepted',            verb:'attempted a nuclear strike on' },
+  FORTIFY:       { emoji:'🏰', label:'Fortify',                     verb:'fortified against' },
+  PEACE:         { emoji:'🕊️', label:'Peace Offer',                 verb:'offered peace to' },
+  VICTORY:       { emoji:'🏆', label:'Victory',                     verb:'claimed victory over' },
+  ALLIANCELOOT:  { emoji:'💰', label:'Alliance Loot',                verb:'looted alliance funds from' },
+};
+function getAttackTypeInfo(rawType) {
+  const type = normalizeAttackType(rawType);
+  return ATTACK_TYPE_INFO[type] || { emoji:'⚔️', label:(rawType||'Unknown').replace(/_/g,' '), verb:'attacked' };
+}
+
 // NOTE: WarAttack does NOT expose att_nation_name/def_nation_name in the P&W API
 // (confirmed via live GraphQL validation error). Names are resolved from the
 // war room's own known nations (ctx) instead of the attack payload.
-function buildAttackEmbed(attack, ctx={}) {
-  const typeEmojis = { GROUND:'⚔️', AIRSTRIKE_INFRA:'✈️', AIRSTRIKE_SOLDIERS:'✈️', AIRSTRIKE_TANKS:'✈️', AIRSTRIKE_MONEY:'✈️', AIRSTRIKE_SHIP:'✈️', AIRSTRIKE_AIR:'✈️', NAVAL:'🚢', NAVAL_INFRA:'🚢', MISSILE:'🚀', NUKE:'☢️', FORTIFY:'🏰', PEACE:'🕊️' };
-  const successLabels = { IMMENSE_TRIUMPH:'🏆 IMMENSE TRIUMPH', MODERATE_SUCCESS:'✅ MODERATE SUCCESS', PYRRHIC_VICTORY:'⚠️ PYRRHIC VICTORY', UTTER_FAILURE:'❌ UTTER FAILURE', VICTORY:'✅ VICTORY' };
-  const attackType = attack.type||'UNKNOWN';
-  const emoji      = typeEmojis[attackType]||'⚔️';
-  const success    = successLabels[attack.success]||attack.success||'?';
-  const isAttWin   = String(attack.victor)===String(attack.attid);
-  const color      = isAttWin ? 0x2ecc71 : 0xe74c3c;
-  const typeLabel  = attackType.replace(/_/g,' ');
+// Reports are plain text (not embeds) per preference — the GIF URL is put on
+// its own line so Discord renders it as an inline image preview automatically.
+function buildAttackReport(attack, ctx={}) {
+  const successTag  = normalizeSuccess(attack.success);
+  const typeInfo     = getAttackTypeInfo(attack.type);
+  const attName      = resolveAttackName(attack.attid, ctx);
+  const defName      = resolveAttackName(attack.defid, ctx);
 
-  const attName = resolveAttackName(attack.attid, ctx);
-  const defName = resolveAttackName(attack.defid, ctx);
+  const resultText = successTag==='UTTER_FAILURE' ? 'and it was an **utter failure**'
+    : successTag==='PYRRHIC_VICTORY' ? 'and it was a **pyrrhic victory** — won at great cost'
+    : successTag==='MODERATE_SUCCESS' ? 'and it was a **moderate success**'
+    : 'and it was an **immense triumph**';
 
-  const resultLine = attack.success==='UTTER_FAILURE' ? 'The attack was an **UTTER FAILURE**.'
-    : attack.success==='PYRRHIC_VICTORY' ? 'It was a **PYRRHIC VICTORY** — won at great cost.'
-    : attack.success==='MODERATE_SUCCESS' ? 'It was a **MODERATE SUCCESS**.'
-    : 'It was an **IMMENSE TRIUMPH!**';
+  const lines = [];
+  lines.push(`${typeInfo.emoji} **[${attName}](https://politicsandwar.com/nation/id=${attack.attid})** ${typeInfo.verb} **[${defName}](https://politicsandwar.com/nation/id=${attack.defid})** (${typeInfo.label}), ${resultText}!`);
 
-  const embed = new EmbedBuilder()
-    .setTitle(`${emoji} ${typeLabel} Attack`)
-    .setColor(color)
-    .setDescription(
-      `**[${attName}](https://politicsandwar.com/nation/id=${attack.attid})** launched a **${typeLabel}** attack against ` +
-      `**[${defName}](https://politicsandwar.com/nation/id=${attack.defid})**.\n\n${resultLine}`
-    )
-    .setTimestamp(new Date(attack.date));
-
-  const gif = getGif(attackType, attack.success);
-  if (gif) embed.setImage(gif);
+  if ((attack.infra_destroyed||0)>0) {
+    lines.push(`🏗️ Infrastructure destroyed: ${Number(attack.infra_destroyed).toFixed(2)} (worth $${Number(attack.infra_destroyed_value||0).toLocaleString()})`);
+  }
 
   const attLosses=[], defLosses=[];
-  if ((attack.att_soldiers_lost||0)>0) attLosses.push(`👮 ${Number(attack.att_soldiers_lost).toLocaleString()}`);
-  if ((attack.att_tanks_lost||0)>0)    attLosses.push(`🚗 ${Number(attack.att_tanks_lost).toLocaleString()}`);
-  if ((attack.att_aircraft_lost||0)>0) attLosses.push(`✈️ ${Number(attack.att_aircraft_lost).toLocaleString()}`);
-  if ((attack.att_ships_lost||0)>0)    attLosses.push(`🚢 ${Number(attack.att_ships_lost).toLocaleString()}`);
-  if ((attack.def_soldiers_lost||0)>0) defLosses.push(`👮 ${Number(attack.def_soldiers_lost).toLocaleString()}`);
-  if ((attack.def_tanks_lost||0)>0)    defLosses.push(`🚗 ${Number(attack.def_tanks_lost).toLocaleString()}`);
-  if ((attack.def_aircraft_lost||0)>0) defLosses.push(`✈️ ${Number(attack.def_aircraft_lost).toLocaleString()}`);
-  if ((attack.def_ships_lost||0)>0)    defLosses.push(`🚢 ${Number(attack.def_ships_lost).toLocaleString()}`);
-
-  if ((attack.infra_destroyed||0)>0) embed.addFields({ name:'🏗️ Infrastructure Destroyed', value:`${Number(attack.infra_destroyed).toFixed(2)} infra — $${Number(attack.infra_destroyed_value||0).toLocaleString()}`, inline:false });
-  if (attLosses.length>0) embed.addFields({ name:`⚔️ Attacker Losses (${attName})`, value:attLosses.join(' | '), inline:true });
-  if (defLosses.length>0) embed.addFields({ name:`🛡️ Defender Losses (${defName})`, value:defLosses.join(' | '), inline:true });
+  if ((attack.att_soldiers_lost||0)>0) attLosses.push(`👮 ${Number(attack.att_soldiers_lost).toLocaleString()} soldiers`);
+  if ((attack.att_tanks_lost||0)>0)    attLosses.push(`🚗 ${Number(attack.att_tanks_lost).toLocaleString()} tanks`);
+  if ((attack.att_aircraft_lost||0)>0) attLosses.push(`✈️ ${Number(attack.att_aircraft_lost).toLocaleString()} planes`);
+  if ((attack.att_ships_lost||0)>0)    attLosses.push(`🚢 ${Number(attack.att_ships_lost).toLocaleString()} ships`);
+  if ((attack.def_soldiers_lost||0)>0) defLosses.push(`👮 ${Number(attack.def_soldiers_lost).toLocaleString()} soldiers`);
+  if ((attack.def_tanks_lost||0)>0)    defLosses.push(`🚗 ${Number(attack.def_tanks_lost).toLocaleString()} tanks`);
+  if ((attack.def_aircraft_lost||0)>0) defLosses.push(`✈️ ${Number(attack.def_aircraft_lost).toLocaleString()} planes`);
+  if ((attack.def_ships_lost||0)>0)    defLosses.push(`🚢 ${Number(attack.def_ships_lost).toLocaleString()} ships`);
+  if (attLosses.length>0) lines.push(`⚔️ ${attName} lost: ${attLosses.join(', ')}`);
+  if (defLosses.length>0) lines.push(`🛡️ ${defName} lost: ${defLosses.join(', ')}`);
 
   const munUsed=(attack.att_mun_used||0)+(attack.def_mun_used||0);
   const gasUsed=(attack.att_gas_used||0)+(attack.def_gas_used||0);
-  if (munUsed>0||gasUsed>0) embed.addFields({ name:'⛽ Resources Used', value:`Munitions: ${munUsed.toFixed(1)} | Gasoline: ${gasUsed.toFixed(1)}`, inline:false });
+  if (munUsed>0||gasUsed>0) lines.push(`⛽ Munitions used: ${munUsed.toFixed(1)} | Gasoline used: ${gasUsed.toFixed(1)}`);
 
-  embed.setFooter({ text:`Attack ID: ${attack.id} | War ID: ${attack.war_id}` });
-  return embed;
+  const gif = getGif(attack.type, successTag);
+  if (gif) lines.push(gif);
+
+  return lines.join('\n');
 }
 
 async function checkWarRoomAttacks(client) {
@@ -193,7 +251,7 @@ async function processRoomAttacks(client, room) {
       newAttacks.sort((a,b)=>parseInt(a.id)-parseInt(b.id));
       for (const attack of newAttacks) {
         if (['FORTIFY'].includes(attack.type)) continue;
-        await channel.send({ embeds:[buildAttackEmbed(attack, ctx)] }).catch(()=>{});
+        await channel.send({ content: buildAttackReport(attack, ctx) }).catch(()=>{});
         run(`INSERT INTO alert_settings (guild_id,alert_type,setting_key,setting_value) VALUES(?,'war_attack_last',?,?) ON CONFLICT(guild_id,alert_type,setting_key) DO UPDATE SET setting_value=excluded.setting_value`,
           [room.guild_id, String(war_id), String(attack.id)]);
       }
@@ -233,6 +291,11 @@ async function createWarRoom(client, guild, guildId, enemyNation, ourDiscordId, 
   const childCount = guild.channels.cache.filter(c => c.parentId === category.id).size;
   if (childCount >= 50) {
     logger.warn(`War room category "${category.name}" is full (50 channels) — skipping room for ${enemyNation.nation_name}. Archive/close old war rooms or use a second category.`);
+    return null;
+  }
+
+  if (isInactiveNation(enemyNation.last_active)) {
+    logger.info(`Skipping war room for ${enemyNation.nation_name} — inactive ${Math.floor(daysSinceActive(enemyNation.last_active))}+ days (likely a raid).`);
     return null;
   }
 
@@ -295,4 +358,4 @@ async function removeMemberFromWarRoom(client, guild, guildId, nationId, warId) 
   } catch (err) { logger.error(`removeMemberFromWarRoom: ${err.message}`); }
 }
 
-module.exports = { getOrCreateWarRoom, removeMemberFromWarRoom, buildWarCard, buildWarButtons, fetchWarData, fetchNationData, sendOrRefreshWarCard, checkWarRoomAttacks };
+module.exports = { getOrCreateWarRoom, removeMemberFromWarRoom, buildWarCard, buildWarButtons, fetchWarData, fetchNationData, sendOrRefreshWarCard, checkWarRoomAttacks, isInactiveNation, daysSinceActive, closeWarRoomForInactivity, INACTIVITY_DAYS };

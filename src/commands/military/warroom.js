@@ -5,7 +5,7 @@
 const { SlashCommandBuilder, EmbedBuilder, ChannelType } = require('discord.js');
 const { run, queryOne, query } = require('../../utils/database');
 const { pwQuery, MEMBER_POSITIONS } = require('../../utils/pwApi');
-const { getOrCreateWarRoom } = require('../../systems/military/warRoomManager');
+const { getOrCreateWarRoom, isInactiveNation } = require('../../systems/military/warRoomManager');
 const { buildNationToDiscordMap } = require('../../utils/nationLink');
 const { isLegitimateCounter } = require('../../utils/counterDetector');
 
@@ -95,8 +95,8 @@ module.exports = {
               data {
                 id att_alliance_id def_alliance_id attid defid
                 att_resistance def_resistance turnsleft
-                attacker { id nation_name score alliance_position soldiers tanks aircraft ships missiles nukes spies alliance { id name } }
-                defender { id nation_name score alliance_position soldiers tanks aircraft ships missiles nukes spies alliance { id name } }
+                attacker { id nation_name score alliance_position soldiers tanks aircraft ships missiles nukes spies last_active alliance { id name } }
+                defender { id nation_name score alliance_position soldiers tanks aircraft ships missiles nukes spies last_active alliance { id name } }
               }
             }
           }
@@ -116,7 +116,7 @@ module.exports = {
 
       const discordMap = buildNationToDiscordMap(interaction.guildId);
       const guild      = interaction.guild;
-      let created = 0, existing = 0, skipped = 0;
+      let created = 0, existing = 0, skipped = 0, inactive = 0;
       const errors = [];
 
       for (const war of warsToProcess) {
@@ -130,6 +130,8 @@ module.exports = {
 
           const existingRoom = queryOne('SELECT id FROM war_rooms WHERE guild_id=? AND enemy_nation_id=? AND status=?', [interaction.guildId, enemyNation.id, 'active']);
           if (existingRoom) { existing++; continue; }
+
+          if (isInactiveNation(enemyNation.last_active)) { inactive++; continue; }
 
           const counterResult = await isLegitimateCounter(interaction.guildId, allianceId, enemyNation.id, enemyNation.alliance?.id);
 
@@ -171,7 +173,8 @@ module.exports = {
         .addFields(
           { name: '🆕 Created',          value: `${created}`,  inline: true },
           { name: '✅ Already Existed',  value: `${existing}`, inline: true },
-          { name: '⏭️ Skipped',           value: `${skipped}`,  inline: true },
+          { name: '💤 Skipped (inactive 5d+)', value: `${inactive}`, inline: true },
+          { name: '⏭️ Skipped (other)',   value: `${skipped}`,  inline: true },
           { name: '📊 Wars Scanned',     value: `${defWars.length} def + ${offWars.length} off = **${warsToProcess.length}**`, inline: false },
         ).setTimestamp();
       if (errors.length > 0) embed.addFields({ name: '⚠️ Errors', value: errors.slice(0, 5).join('\n').slice(0, 1020) });
