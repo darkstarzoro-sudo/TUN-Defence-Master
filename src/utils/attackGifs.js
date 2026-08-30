@@ -1,54 +1,57 @@
 // ============================================================
 // src/utils/attackGifs.js
-// Themed GIFs for each P&W attack type and outcome.
+// Themed GIFs for each P&W attack type.
 //
-// Canonical keys match the real P&W GraphQL `AttackType` enum:
+// IMPORTANT: every URL below was individually verified by fetching
+// its source page and reading the real og:image metadata — these are
+// NOT guessed/fabricated links. An earlier version of this file used
+// invented media.tenor.com URLs that didn't actually exist, which is
+// why GIFs weren't rendering (they were dead links). Do not add new
+// GIF URLs to this file without verifying them the same way (fetch
+// the gif's page, confirm a working og:image / direct file link).
+//
+// Canonical type keys match the real P&W GraphQL `AttackType` enum:
 // GROUND, AIRVINFRA, AIRVSOLDIERS, AIRVTANKS, AIRVMONEY, AIRVSHIPS,
 // AIRVAIR, NAVAL, MISSILE, MISSILEFAIL, NUKE, NUKEFAIL, FORTIFY,
 // PEACE, VICTORY, ALLIANCELOOT.
-// Old AIRSTRIKE_*/NAVAL_INFRA keys are kept as aliases below so
+// Old AIRSTRIKE_*/NAVAL_INFRA key names are kept as aliases below so
 // nothing breaks if the API naming ever differs from what's confirmed.
+//
+// NOTE ON SCOPE: rather than fabricate dozens of unverified success/
+// failure variants, each attack type below maps to ONE verified GIF
+// (two for MISSILE/NUKE — a launch GIF for success, an interception
+// GIF for failure). If you want more variety, the safest approach is
+// to host your own curated set (e.g. on imgbb) and paste direct links
+// into GIFS below — just make sure each link ends in a real, working
+// file, not a webpage.
 // ============================================================
 
+const GROUND_GIF     = 'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExZXQwOTdodnJyOTM2eXVmb2ZtMzVpM2t5eThkM2Zya25na2xueWhjayZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/JxyYDDwOH9Gqks20cw/giphy.gif'; // tank/explosion (giphy.com/gifs/SecondFront-tank-wargame-second-front-JxyYDDwOH9Gqks20cw)
+const DOGFIGHT_GIF   = 'https://media1.tenor.com/m/MZM5pEt4TFYAAAAd/dogfight-air-to-air-combat.gif'; // tenor.com/view/dogfight-air-to-air-combat-gi-joe-a-real-american-hero-gif-3572262307238530134
+const NAVAL_GIF      = 'https://gifdb.com/images/branded/high/warship-exploding-y7mhdw26ojbpek11.gif'; // gifdb.com/gif/warship-exploding-y7mhdw26ojbpek11.html
+const MISSILE_GIF    = 'https://media1.tenor.com/m/GPWtOu0xdu8AAAAd/press-missile.gif'; // tenor.com/view/press-missile-launch-gif-17462808
+const NUKE_GIF       = 'https://media1.tenor.com/m/RlvO_fx80XwAAAAd/nuke-nuclear-bomb.gif'; // tenor.com/view/nuke-nuclear-bomb-mushroom-clouds-explosion-boom-gif-16362236
+const INTERCEPTED_GIF= 'https://media1.tenor.com/m/TV9tSJQ77bcAAAAd/patriot-defence-system.gif'; // tenor.com/view/patriot-defence-system-gif-5575295022199991735
+const FORTIFY_GIF    = 'https://media1.tenor.com/m/Ie-Q1Q_7fmcAAAAd/pour-hot-oil-medieval-castle-defence.gif'; // tenor.com/view/pour-hot-oil-medieval-castle-defence-gif-27003537
+const PEACE_GIF      = 'https://media1.tenor.com/m/ObWFgyjIM4QAAAAd/peace-dove.gif'; // tenor.com/view/peace-dove-happy-national-peace-day-fly-gif-15080843
+
 const GIFS = {
-  GROUND: {
-    IMMENSE_TRIUMPH:  ['https://media.tenor.com/8tpwFKp2LJAAAAAC/tank-war.gif','https://media.tenor.com/ZoIKkD9HATIAAAAC/military-army.gif','https://media.tenor.com/rh9kI6dPtBkAAAAC/tanks-war.gif'],
-    MODERATE_SUCCESS: ['https://media.tenor.com/R7c0j0oJsTMAAAAC/army-soldier.gif','https://media.tenor.com/nY0mFOGEoIIAAAAC/soldier-military.gif'],
-    PYRRHIC_VICTORY:  ['https://media.tenor.com/h-UHkaHE4F0AAAAC/war-battle.gif'],
-    UTTER_FAILURE:    ['https://media.tenor.com/fBgZi1MnSTAAAAAC/retreat-running.gif','https://media.tenor.com/BgYFQmKuXPkAAAAC/retreat-army.gif'],
-  },
-  AIRVINFRA:    { IMMENSE_TRIUMPH:['https://media.tenor.com/SIhMRcuNJYcAAAAC/airstrike-bombing.gif','https://media.tenor.com/yp87UoknmTcAAAAC/bombing-explosion.gif'], MODERATE_SUCCESS:['https://media.tenor.com/O5EmtKxCb2gAAAAC/jet-fighter-plane.gif'], PYRRHIC_VICTORY:['https://media.tenor.com/kl_QRpXHdz8AAAAC/plane-crash.gif'], UTTER_FAILURE:['https://media.tenor.com/5J3JfGQnkfQAAAAC/jet-shot-down.gif'] },
-  AIRVSOLDIERS: { IMMENSE_TRIUMPH:['https://media.tenor.com/SIhMRcuNJYcAAAAC/airstrike-bombing.gif'], MODERATE_SUCCESS:['https://media.tenor.com/O5EmtKxCb2gAAAAC/jet-fighter-plane.gif'], UTTER_FAILURE:['https://media.tenor.com/5J3JfGQnkfQAAAAC/jet-shot-down.gif'] },
-  AIRVTANKS:    { IMMENSE_TRIUMPH:['https://media.tenor.com/SIhMRcuNJYcAAAAC/airstrike-bombing.gif'], UTTER_FAILURE:['https://media.tenor.com/5J3JfGQnkfQAAAAC/jet-shot-down.gif'] },
-  AIRVMONEY:    { IMMENSE_TRIUMPH:['https://media.tenor.com/SIhMRcuNJYcAAAAC/airstrike-bombing.gif'], UTTER_FAILURE:['https://media.tenor.com/5J3JfGQnkfQAAAAC/jet-shot-down.gif'] },
-  AIRVSHIPS:    { IMMENSE_TRIUMPH:['https://media.tenor.com/yp87UoknmTcAAAAC/bombing-explosion.gif'], UTTER_FAILURE:['https://media.tenor.com/5J3JfGQnkfQAAAAC/jet-shot-down.gif'] },
-  AIRVAIR:      { IMMENSE_TRIUMPH:['https://media.tenor.com/O5EmtKxCb2gAAAAC/jet-fighter-plane.gif'], UTTER_FAILURE:['https://media.tenor.com/5J3JfGQnkfQAAAAC/jet-shot-down.gif'] },
-  NAVAL: {
-    IMMENSE_TRIUMPH:  ['https://media.tenor.com/lz01EbwpsakAAAAC/battleship-naval.gif','https://media.tenor.com/h-k4bVPIBWgAAAAC/warship-navy.gif','https://media.tenor.com/oqiWFkzSIgcAAAAC/ship-explosion.gif'],
-    MODERATE_SUCCESS: ['https://media.tenor.com/lz01EbwpsakAAAAC/battleship-naval.gif','https://media.tenor.com/h-k4bVPIBWgAAAAC/warship-navy.gif'],
-    PYRRHIC_VICTORY:  ['https://media.tenor.com/oqiWFkzSIgcAAAAC/ship-explosion.gif'],
-    UTTER_FAILURE:    ['https://media.tenor.com/3CXMJkYQWHYAAAAC/ship-sinking.gif'],
-  },
-  MISSILE: {
-    IMMENSE_TRIUMPH:  ['https://media.tenor.com/sBcLQMBBV5cAAAAC/missile-launch.gif','https://media.tenor.com/e7FjxSKGGxgAAAAC/missile-strike.gif'],
-    MODERATE_SUCCESS: ['https://media.tenor.com/sBcLQMBBV5cAAAAC/missile-launch.gif'],
-    PYRRHIC_VICTORY:  ['https://media.tenor.com/e7FjxSKGGxgAAAAC/missile-strike.gif'],
-    UTTER_FAILURE:    ['https://media.tenor.com/dMIUxdnIgk4AAAAC/missile-intercepted.gif'],
-    default:          ['https://media.tenor.com/sBcLQMBBV5cAAAAC/missile-launch.gif'],
-  },
-  MISSILEFAIL: { default: ['https://media.tenor.com/dMIUxdnIgk4AAAAC/missile-intercepted.gif','https://media.tenor.com/Y8dMaAHcbxMAAAAC/missile-defense.gif'] },
-  NUKE: {
-    IMMENSE_TRIUMPH:  ['https://media.tenor.com/9p4U5cDXx2EAAAAC/nuclear-bomb.gif','https://media.tenor.com/YLRkWl_eNjgAAAAC/nuclear-explosion.gif','https://media.tenor.com/y_0K8UB5JpkAAAAC/mushroom-cloud-nuclear.gif','https://media.tenor.com/rOQ49IxW4VEAAAAC/nuke-explosion.gif'],
-    MODERATE_SUCCESS: ['https://media.tenor.com/9p4U5cDXx2EAAAAC/nuclear-bomb.gif','https://media.tenor.com/YLRkWl_eNjgAAAAC/nuclear-explosion.gif'],
-    PYRRHIC_VICTORY:  ['https://media.tenor.com/y_0K8UB5JpkAAAAC/mushroom-cloud-nuclear.gif'],
-    UTTER_FAILURE:    ['https://media.tenor.com/dMIUxdnIgk4AAAAC/missile-intercepted.gif'],
-    default:          ['https://media.tenor.com/9p4U5cDXx2EAAAAC/nuclear-bomb.gif'],
-  },
-  NUKEFAIL: { default: ['https://media.tenor.com/dMIUxdnIgk4AAAAC/missile-intercepted.gif','https://media.tenor.com/Y8dMaAHcbxMAAAAC/missile-defense.gif'] },
-  FORTIFY:      { default: ['https://media.tenor.com/K-PXjvHF1OAAAAAC/fortify-defense.gif'] },
-  PEACE:        { default: ['https://media.tenor.com/TGALe_JeJcAAAAAC/peace-dove.gif'] },
-  VICTORY:      { default: ['https://media.tenor.com/8tpwFKp2LJAAAAAC/tank-war.gif'] },
-  ALLIANCELOOT: { default: ['https://media.tenor.com/yp87UoknmTcAAAAC/bombing-explosion.gif'] },
+  GROUND:       { default: [GROUND_GIF] },
+  AIRVINFRA:    { default: [DOGFIGHT_GIF] },
+  AIRVSOLDIERS: { default: [DOGFIGHT_GIF] },
+  AIRVTANKS:    { default: [DOGFIGHT_GIF] },
+  AIRVMONEY:    { default: [DOGFIGHT_GIF] },
+  AIRVSHIPS:    { default: [DOGFIGHT_GIF] },
+  AIRVAIR:      { default: [DOGFIGHT_GIF] },
+  NAVAL:        { default: [NAVAL_GIF] },
+  MISSILE:      { UTTER_FAILURE: [INTERCEPTED_GIF], default: [MISSILE_GIF] },
+  MISSILEFAIL:  { default: [INTERCEPTED_GIF] },
+  NUKE:         { UTTER_FAILURE: [INTERCEPTED_GIF], default: [NUKE_GIF] },
+  NUKEFAIL:     { default: [INTERCEPTED_GIF] },
+  FORTIFY:      { default: [FORTIFY_GIF] },
+  PEACE:        { default: [PEACE_GIF] },
+  VICTORY:      { default: [GROUND_GIF] },
+  ALLIANCELOOT: { default: [GROUND_GIF] },
 };
 
 // Old key names -> canonical enum key, kept so nothing breaks if the API
@@ -68,9 +71,7 @@ function getGif(attackType, successOutcome) {
   if (!typeGifs) return null;
   const key = successOutcome==null ? '' : String(successOutcome); // defensive: success can be an Int code, not a string
   let pool = typeGifs[key];
-  if (!pool && key.includes('VITAL_DEFENSE')) pool = typeGifs.VDS_INTERCEPTED;
   if (!pool) pool = typeGifs.default;
-  if (!pool) pool = typeGifs.IMMENSE_TRIUMPH;
   if (!pool || pool.length === 0) return null;
   return pool[Math.floor(Math.random() * pool.length)];
 }
