@@ -14,10 +14,23 @@ const CACHE_TIMES = {
 
 const MEMBER_POSITIONS = ['MEMBER', 'OFFICER', 'HEIR', 'LEADER'];
 
+// Transient network/TLS errors — usually caused by antivirus HTTPS scanning,
+// flaky WiFi, or ISP hiccups corrupting the connection mid-handshake. These
+// are NOT API errors; a short retry very often succeeds because the next
+// attempt gets a fresh connection.
+const TRANSIENT_ERROR_PATTERNS = [
+  'ECONNRESET', 'EPROTO', 'ETIMEDOUT', 'ECONNABORTED', 'socket hang up',
+  'bad record mac', 'decrypt error', 'ssl3_read_bytes', 'EAI_AGAIN',
+];
+function isTransientNetworkError(err) {
+  const msg = err?.message || '';
+  return TRANSIENT_ERROR_PATTERNS.some(p => msg.includes(p));
+}
+
 // ─────────────────────────────────────────────────────────────
 // CORE QUERY RUNNER — logs full error details
 // ─────────────────────────────────────────────────────────────
-async function pwQuery(queryStr, variables = {}) {
+async function pwQuery(queryStr, variables = {}, _retryCount = 0) {
   const url = `${PW_API_BASE}${process.env.PW_API_KEY}`;
   try {
     const res = await axios.post(url, { query: queryStr, variables }, {
@@ -35,7 +48,13 @@ async function pwQuery(queryStr, variables = {}) {
     if (err.response?.status === 429) {
       logger.warn('Rate limited — waiting 60s');
       await new Promise(r => setTimeout(r, 60000));
-      return pwQuery(queryStr, variables);
+      return pwQuery(queryStr, variables, _retryCount);
+    }
+    if (isTransientNetworkError(err) && _retryCount < 2) {
+      const delay = 1500 * (_retryCount + 1);
+      logger.warn(`P&W API transient network error (${err.message}) — retrying in ${delay}ms (attempt ${_retryCount + 1}/2)`);
+      await new Promise(r => setTimeout(r, delay));
+      return pwQuery(queryStr, variables, _retryCount + 1);
     }
     logger.error('P&W API HTTP error: ' + err.message);
     if (err.response?.data) {

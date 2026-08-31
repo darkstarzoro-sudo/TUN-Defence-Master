@@ -221,10 +221,13 @@ function buildAttackReport(attack, ctx={}) {
   const gasUsed=(attack.att_gas_used||0)+(attack.def_gas_used||0);
   if (munUsed>0||gasUsed>0) lines.push(`⛽ Munitions used: ${munUsed.toFixed(1)} | Gasoline used: ${gasUsed.toFixed(1)}`);
 
-  const gif = getGif(attack.type, successTag);
-  if (gif) lines.push(gif);
+  // gifUrl is delivered as a bare-minimum embed (image only, no title/text)
+  // rather than pasted into the message text — Discord requires the raw URL
+  // to be visible as text to auto-preview it, which left an ugly link
+  // sitting in the message. An image-only embed shows just the picture.
+  const gifUrl = getGif(attack.type, successTag);
 
-  return lines.join('\n');
+  return { text: lines.join('\n'), gifUrl };
 }
 
 async function checkWarRoomAttacks(client) {
@@ -251,7 +254,10 @@ async function processRoomAttacks(client, room) {
       newAttacks.sort((a,b)=>parseInt(a.id)-parseInt(b.id));
       for (const attack of newAttacks) {
         if (['FORTIFY'].includes(attack.type)) continue;
-        await channel.send({ content: buildAttackReport(attack, ctx) }).catch(()=>{});
+        const report = buildAttackReport(attack, ctx);
+        const payload = { content: report.text };
+        if (report.gifUrl) payload.embeds = [new EmbedBuilder().setImage(report.gifUrl)];
+        await channel.send(payload).catch(()=>{});
         run(`INSERT INTO alert_settings (guild_id,alert_type,setting_key,setting_value) VALUES(?,'war_attack_last',?,?) ON CONFLICT(guild_id,alert_type,setting_key) DO UPDATE SET setting_value=excluded.setting_value`,
           [room.guild_id, String(war_id), String(attack.id)]);
       }

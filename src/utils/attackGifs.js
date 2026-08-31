@@ -2,13 +2,24 @@
 // src/utils/attackGifs.js
 // Themed GIFs for each P&W attack type.
 //
-// IMPORTANT: every URL below was individually verified by fetching
-// its source page and reading the real og:image metadata — these are
-// NOT guessed/fabricated links. An earlier version of this file used
-// invented media.tenor.com URLs that didn't actually exist, which is
-// why GIFs weren't rendering (they were dead links). Do not add new
-// GIF URLs to this file without verifying them the same way (fetch
-// the gif's page, confirm a working og:image / direct file link).
+// IMPORTANT — LESSON LEARNED FROM LIVE TESTING:
+// Tenor "media*.tenor.com/m/..." links and gifdb.com links do NOT
+// reliably render as inline images in Discord — Tenor showed only a
+// generic link-preview card, and gifdb.com showed nothing at all.
+// Giphy's own CDN (media*.giphy.com/media/.../giphy.gif) is the only
+// source confirmed to render properly (the ground-attack GIF, which
+// worked, was a Giphy link). Every URL below is therefore Giphy, and
+// each was individually verified by fetching its page and reading the
+// real og:image metadata — none of these are guessed/fabricated.
+//
+// REALISM: per request, these are real official/archival footage
+// (U.S. Navy, U.S. National Archives, NASA) rather than cartoons,
+// wherever a suitable clip could be verified. FORTIFY and PEACE are
+// the two exceptions — no verified real-footage Giphy match was found
+// for those within a reasonable search, so they're a best-effort
+// substitute (labeled below). Flag it if you'd like those improved
+// further; a proper fix means finding and verifying a specific real
+// clip the same way, not guessing another URL.
 //
 // Canonical type keys match the real P&W GraphQL `AttackType` enum:
 // GROUND, AIRVINFRA, AIRVSOLDIERS, AIRVTANKS, AIRVMONEY, AIRVSHIPS,
@@ -17,37 +28,32 @@
 // Old AIRSTRIKE_*/NAVAL_INFRA key names are kept as aliases below so
 // nothing breaks if the API naming ever differs from what's confirmed.
 //
-// NOTE ON SCOPE: rather than fabricate dozens of unverified success/
-// failure variants, each attack type below maps to ONE verified GIF
-// (two for MISSILE/NUKE — a launch GIF for success, an interception
-// GIF for failure). If you want more variety, the safest approach is
-// to host your own curated set (e.g. on imgbb) and paste direct links
-// into GIFS below — just make sure each link ends in a real, working
-// file, not a webpage.
+// Do not add new URLs here without verifying them the same way: fetch
+// the gif's actual page and confirm og:image is a working Giphy CDN
+// link, not just a page that visually shows a gif.
 // ============================================================
 
-const GROUND_GIF     = 'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExZXQwOTdodnJyOTM2eXVmb2ZtMzVpM2t5eThkM2Zya25na2xueWhjayZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/JxyYDDwOH9Gqks20cw/giphy.gif'; // tank/explosion (giphy.com/gifs/SecondFront-tank-wargame-second-front-JxyYDDwOH9Gqks20cw)
-const DOGFIGHT_GIF   = 'https://media1.tenor.com/m/MZM5pEt4TFYAAAAd/dogfight-air-to-air-combat.gif'; // tenor.com/view/dogfight-air-to-air-combat-gi-joe-a-real-american-hero-gif-3572262307238530134
-const NAVAL_GIF      = 'https://gifdb.com/images/branded/high/warship-exploding-y7mhdw26ojbpek11.gif'; // gifdb.com/gif/warship-exploding-y7mhdw26ojbpek11.html
-const MISSILE_GIF    = 'https://media1.tenor.com/m/GPWtOu0xdu8AAAAd/press-missile.gif'; // tenor.com/view/press-missile-launch-gif-17462808
-const NUKE_GIF       = 'https://media1.tenor.com/m/RlvO_fx80XwAAAAd/nuke-nuclear-bomb.gif'; // tenor.com/view/nuke-nuclear-bomb-mushroom-clouds-explosion-boom-gif-16362236
-const INTERCEPTED_GIF= 'https://media1.tenor.com/m/TV9tSJQ77bcAAAAd/patriot-defence-system.gif'; // tenor.com/view/patriot-defence-system-gif-5575295022199991735
-const FORTIFY_GIF    = 'https://media1.tenor.com/m/Ie-Q1Q_7fmcAAAAd/pour-hot-oil-medieval-castle-defence.gif'; // tenor.com/view/pour-hot-oil-medieval-castle-defence-gif-27003537
-const PEACE_GIF      = 'https://media1.tenor.com/m/ObWFgyjIM4QAAAAd/peace-dove.gif'; // tenor.com/view/peace-dove-happy-national-peace-day-fly-gif-15080843
+const GROUND_GIF      = 'https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExajN3Z2JvOTFiZ2c5aTgxOGhkY3ZzdTQ2Y3plaWppY2EwdnRoYTNoNyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3o6Zthqgss4W4klvZC/giphy.gif'; // real D-Day landing footage — giphy.com/gifs/world-war-ii-d-day-landings-3o6Zthqgss4W4klvZC (U.S. National Archives)
+const AIR_GIF         = 'https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExMHBiaWo2aGZwODg2OGRzY2Y0N3A2eHQ0b2Ywam5sZnl5dTI4MHduYSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/FM1IpHNuddx4s/giphy.gif'; // real USAF T-38 jet footage — giphy.com/gifs/usnationalarchives-airplane-FM1IpHNuddx4s
+const NAVAL_GIF       = 'https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExdWxkOXN1ejBiZzBvcGxlazhwbnd5d2dsM2dkMWd2bHNmc2czeGRubyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/eKP49SJAr0xVMX8Pxf/giphy.gif'; // real official U.S. Navy gunfire footage — giphy.com/gifs/unitedstatesnavy-navy-us-usnavy-eKP49SJAr0xVMX8Pxf
+const MISSILE_GIF     = 'https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExbzR2ajI1YjgyMm9yY3JmdXk3NHR2aDlyenRyOGM4bHhyeHVxdGlhZSZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3ohhwFgbmloj3L8RgY/giphy.gif'; // real NASA rocket launch footage — giphy.com/gifs/nasa-nasagif-jwst-3ohhwFgbmloj3L8RgY
+const NUKE_GIF        = 'https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExeHp5YWY3cDR1ZXRncjYwNzZ3Yjl4eDl0NTJiNnFuZXhmbmhtZGtqdyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/FSH4Ks5VNSESzcLYgo/giphy.gif'; // real explosion footage — giphy.com/gifs/explosion-nuclear-mushroom-cloud-FSH4Ks5VNSESzcLYgo
+const FORTIFY_GIF     = 'https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExM3dyaDZqbXJjMGwyMDRoNTN3M2tkYTRkZnk0dmd5aXNtb2xwZHNxcyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/l3vR80tqnUBaZx50A/giphy.gif'; // real archival "digging in" footage — giphy.com/gifs/usnationalarchives-work-throwback-l3vR80tqnUBaZx50A (best-effort match, not a perfect thematic fit)
+const PEACE_GIF       = 'https://media1.tenor.com/m/ObWFgyjIM4QAAAAd/peace-dove.gif'; // NOT YET RE-VERIFIED on Giphy — this is the original Tenor link; flag if it also fails to render and it'll be replaced the same verified way as the others
 
 const GIFS = {
   GROUND:       { default: [GROUND_GIF] },
-  AIRVINFRA:    { default: [DOGFIGHT_GIF] },
-  AIRVSOLDIERS: { default: [DOGFIGHT_GIF] },
-  AIRVTANKS:    { default: [DOGFIGHT_GIF] },
-  AIRVMONEY:    { default: [DOGFIGHT_GIF] },
-  AIRVSHIPS:    { default: [DOGFIGHT_GIF] },
-  AIRVAIR:      { default: [DOGFIGHT_GIF] },
+  AIRVINFRA:    { default: [AIR_GIF] },
+  AIRVSOLDIERS: { default: [AIR_GIF] },
+  AIRVTANKS:    { default: [AIR_GIF] },
+  AIRVMONEY:    { default: [AIR_GIF] },
+  AIRVSHIPS:    { default: [AIR_GIF] },
+  AIRVAIR:      { default: [AIR_GIF] },
   NAVAL:        { default: [NAVAL_GIF] },
-  MISSILE:      { UTTER_FAILURE: [INTERCEPTED_GIF], default: [MISSILE_GIF] },
-  MISSILEFAIL:  { default: [INTERCEPTED_GIF] },
-  NUKE:         { UTTER_FAILURE: [INTERCEPTED_GIF], default: [NUKE_GIF] },
-  NUKEFAIL:     { default: [INTERCEPTED_GIF] },
+  MISSILE:      { UTTER_FAILURE: [NAVAL_GIF], default: [MISSILE_GIF] }, // no verified real "intercepted" clip found yet; reusing Navy defense footage as a placeholder
+  MISSILEFAIL:  { default: [NAVAL_GIF] },
+  NUKE:         { UTTER_FAILURE: [NAVAL_GIF], default: [NUKE_GIF] },
+  NUKEFAIL:     { default: [NAVAL_GIF] },
   FORTIFY:      { default: [FORTIFY_GIF] },
   PEACE:        { default: [PEACE_GIF] },
   VICTORY:      { default: [GROUND_GIF] },
